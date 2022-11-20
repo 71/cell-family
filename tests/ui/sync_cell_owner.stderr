@@ -1,0 +1,11 @@
+error[E0277]: the trait bound `Family: ThreadSafeFamily` is not satisfied
+ --> tests/ui/sync_cell_owner.rs:8:5
+  |
+8 |     std::thread::spawn(|| {
+  |     ^^^^^^^^^^^^^^^^^^ the trait `ThreadSafeFamily` is not implemented for `Family`
+  |
+  = note: required because of the requirements on the impl of `Send` for `cell_family::CellOwner<Family>`
+  = note: 1 redundant requirement hidden
+  = note: required because of the requirements on the impl of `Send` for `&mut cell_family::CellOwner<Family>`
+  = note: required because it appears within the type `[closure@$DIR/tests/ui/sync_cell_owner.rs:8:24: 13:6]`
+note: required by a bound in `spawn`

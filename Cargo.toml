@@ -1,0 +1,24 @@
+[package]
+name         = "cell-family"
+description  = "Cheap cells accessed through unique owners"
+authors      = ["Grégoire Geis <opensource@gregoirege.is>"]
+version      = "0.1.0"
+license      = "ISC"
+edition      = "2021"
+rust-version = "1.61"  # MSRV
+readme       = "README.md"
+repository   = "https://github.com/71/cell-family"
+
+[features]
+default = ["std"]
+nightly = []
+std = []
+
+[dependencies]
+rustversion = "1.0"
+
+[build-dependencies]
+rustversion = "1.0"
+
+[dev-dependencies]
+trybuild = "1.0"
