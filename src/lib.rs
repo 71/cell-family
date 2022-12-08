@@ -16,8 +16,8 @@
 //! ```
 //!
 //! This defines `FooFamily` (which implements [`Family`]) as well as
-//! `FooCellOwner` and `FooCell`, aliases for [`CellOwner<FooFamily>`] and
-//! [`Cell<FooFamily>`] respectively.
+//! `FooCellOwner` and `FooCell<T>`, aliases for [`CellOwner<FooFamily>`] and
+//! [`Cell<FooFamily, T>`] respectively.
 //!
 //! One `FooCellOwner` can exist per thread, and thus `FooCellOwner` is **not**
 //! `Send`, since sending a `FooCellOwner` to another thread may allow two
@@ -64,7 +64,7 @@
 //!
 //! # Benefits over [`qcell::TCell`][tcell] / [`qcell::TLCell`][tlcell]
 //!
-//! - Unlike [`qcell::TCell`][tcell] (respectively [`qcell::TCell`](tlcell)),
+//! - Unlike [`qcell::TCell`][tcell] (respectively [`qcell::TLCell`][tlcell]),
 //!   the `Family` `F` is in charge of ensuring that a single `CellOwner<F>`
 //!   exists per program (respectively thread). By using macros to generate
 //!   families, we only need a single

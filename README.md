@@ -16,7 +16,7 @@ For instance, you may define a family `FooFamily` as below:
 cell_family::define!(type FooFamily: FooCellOwner for FooCell<T>);
 ```
 
-This defines `FooFamily` (which implements [`Family`][__link7]) as well as `FooCellOwner` and `FooCell`, aliases for [`CellOwner<FooFamily>`][__link8] and [`Cell<FooFamily>`][__link9] respectively.
+This defines `FooFamily` (which implements [`Family`][__link7]) as well as `FooCellOwner` and `FooCell<T>`, aliases for [`CellOwner<FooFamily>`][__link8] and [`Cell<FooFamily, T>`][__link9] respectively.
 
 One `FooCellOwner` can exist per thread, and thus `FooCellOwner` is **not** `Send`, since sending a `FooCellOwner` to another thread may allow two `FooCellOwner`s to co-exist in a single thread. To allow a single `FooCellOwner` per program (and thus make `FooCellOwner` `Send`), prefix `define!` with `static`:
 
@@ -50,7 +50,7 @@ assert_eq!(*b.get(&owner), "baz");
 
 ## Benefits over [`qcell::TCell`][__link17] / [`qcell::TLCell`][__link18]
 
- - Unlike [`qcell::TCell`][__link19] (respectively [`qcell::TCell`][__link20]), the `Family` `F` is in charge of ensuring that a single `CellOwner<F>` exists per program (respectively thread). By using macros to generate families, we only need a single [`AtomicBool`][__link21] (respectively [`Cell<bool>`][__link22]) for each family, thus requiring no allocations.
+ - Unlike [`qcell::TCell`][__link19] (respectively [`qcell::TLCell`][__link20]), the `Family` `F` is in charge of ensuring that a single `CellOwner<F>` exists per program (respectively thread). By using macros to generate families, we only need a single [`AtomicBool`][__link21] (respectively [`Cell<bool>`][__link22]) for each family, thus requiring no allocations.
  - A few additional methods are provided; for instance, [`owner.get(c)`][__link23], [`owner.get_mut(c)`][__link24] and [`owner.try_get_mut(c)`][__link25] are provided, where `c` can be:
 	 - A tuple of [`Cell`][__link26]s.
 	 - An array of [`Cell`][__link27]s.
@@ -63,7 +63,7 @@ assert_eq!(*b.get(&owner), "baz");
  - `Cell` is [`Debug`][__link34], and will print a representation of its inner value if no `CellOwner` currently exists.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEGyZKBNWOD3NPG4hWBK_oMjIWG3maRHTpBWgyG_cGPsi3PdHhYXKEG9CfYt4voBe_Gz40t1EfMixKG0c95nDaFBWgG2KZaUhr-pupYWSCg2tjZWxsLWZhbWlseWUwLjEuMGtjZWxsX2ZhbWlseYJmdGxjZWxs9g
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEGyZKBNWOD3NPG4hWBK_oMjIWG3maRHTpBWgyG_cGPsi3PdHhYXKEG4WcwcOV5uUjG1mFIEgUcGSKG1zTMVR8Qp1MG5jXBSTGdjUqYWSBg2tjZWxsLWZhbWlseWUwLjEuMGtjZWxsX2ZhbWlseQ
  [__link0]: https://docs.rs/qcell/0.5.2/qcell/struct.TCell.html
  [__link1]: https://docs.rs/qcell/0.5.2/qcell/struct.TLCell.html
  [__link10]: https://docs.rs/cell-family/0.1.0/cell_family/?search=Cell::new
@@ -77,7 +77,7 @@ assert_eq!(*b.get(&owner), "baz");
  [__link18]: https://docs.rs/qcell/0.5.2/qcell/struct.TLCell.html
  [__link19]: https://docs.rs/qcell/0.5.2/qcell/struct.TCell.html
  [__link2]: https://docs.rs/cell-family/0.1.0/cell_family/?search=define
- [__link20]: https://crates.io/crates/tlcell
+ [__link20]: https://docs.rs/qcell/0.5.2/qcell/struct.TLCell.html
  [__link21]: https://doc.rust-lang.org/stable/std/?search=sync::atomic::AtomicBool
  [__link22]: https://doc.rust-lang.org/stable/std/?search=cell::Cell
  [__link23]: https://docs.rs/cell-family/0.1.0/cell_family/?search=CellOwner::get
