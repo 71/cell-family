@@ -1,5 +1,6 @@
 use std::{sync::Arc, time::Duration};
 
+#[rustversion::since(1.63)]
 #[cfg(feature = "std")]
 #[test]
 fn can_wait() {

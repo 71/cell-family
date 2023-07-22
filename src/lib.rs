@@ -205,7 +205,7 @@ impl<F: Family, T: ?Sized> Cell<F, T> {
     /// Returns a reference to the underlying value of the cell, using the
     /// reference to the given [`CellOwner`] as a proof that this cell is not
     /// currently mutably borrowed.
-    #[allow(clippy::needless_pass_by_ref_mut)]
+    #[allow(unknown_lints, clippy::needless_pass_by_ref_mut)]
     pub fn get_mut<'a>(&'a self, owner: &'a mut CellOwner<F>) -> &'a mut T {
         let _ = owner;
 
@@ -280,16 +280,23 @@ const _: () = {
         #[thread_local]
         type TestThreadLocal;
         #[can_wait]
+        #[rustversion::since(1.63)]
         #[cfg(feature = "std")]
         type TestCanWait;
     }
 
     static_assertions::assert_impl_all!(CellOwner<TestThreadSafe>: Send, Sync);
     static_assertions::assert_not_impl_any!(CellOwner<TestThreadLocal>: Send, Sync);
+
+    #[rustversion::since(1.63)]
     #[cfg(feature = "std")]
-    static_assertions::assert_impl_all!(CellOwner<TestCanWait>: Sync);
-    #[cfg(feature = "std")]
-    static_assertions::assert_not_impl_any!(CellOwner<TestCanWait>: Send);
+    fn test_can_wait() {
+        // Note that this test does not need to run, since the checks below are
+        // performed at compile-time. This is only a function because custom
+        // attributes cannot be applied to blocks.
+        static_assertions::assert_impl_all!(CellOwner<TestCanWait>: Sync);
+        static_assertions::assert_not_impl_any!(CellOwner<TestCanWait>: Send);
+    }
 };
 
 impl<F: Family> Drop for CellOwner<F> {

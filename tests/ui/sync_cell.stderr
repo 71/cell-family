@@ -1,10 +1,10 @@
 error[E0277]: the trait bound `Family: ThreadSafeFamily` is not satisfied
- --> tests/ui/sync_cell.rs:8:5
+ --> tests/ui/sync_cell.rs:9:5
   |
-8 |     std::thread::spawn(|| {
+9 |     std::thread::spawn(|| {
   |     ^^^^^^^^^^^^^^^^^^ the trait `ThreadSafeFamily` is not implemented for `Family`
   |
   = note: required because of the requirements on the impl of `Sync` for `cell_family::Cell<Family, Vec<i32>>`
   = note: required because of the requirements on the impl of `Send` for `&cell_family::Cell<Family, Vec<i32>>`
-  = note: required because it appears within the type `[closure@$DIR/tests/ui/sync_cell.rs:8:24: 13:6]`
+  = note: required because it appears within the type `[closure@$DIR/tests/ui/sync_cell.rs:9:24: 14:6]`
 note: required by a bound in `spawn`

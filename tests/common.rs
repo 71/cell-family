@@ -37,6 +37,7 @@ macro_rules! test_all {
             )+
         }
 
+        #[rustversion::since(1.63)]
         #[cfg(feature = "std")]
         mod wait_tests {
             $(
