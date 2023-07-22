@@ -294,7 +294,7 @@ macro_rules! impl_get_for_tuple {
         impl<'a, CF: Family, $($name: ?Sized),*> GetMutWithOwner<'a, CF> for ($(&'a Cell<CF, $name>,)*) {
             type GetMut = ($(&'a mut $name,)*);
 
-            #[allow(non_snake_case, unused_unsafe)]
+            #[allow(non_snake_case, unused_unsafe, clippy::multiple_unsafe_ops_per_block)]
             fn try_get_mut(self, _owner: &'a mut CellOwner<CF>) -> Option<Self::GetMut> {
                 let ($($name,)*) = self;
 

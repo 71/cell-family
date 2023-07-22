@@ -14,20 +14,38 @@ macro_rules! test_all {
             // Since tests run in parallel, we create new families for each test.
             $( #[$attr] )*
             fn $test_name() {
-                cell_family::define!(static type $family_name: $owner_name for $cell_name<T>);
-                cell_family::define!(static type $other_family_name);
+                cell_family::define! {
+                    type $family_name: $owner_name for $cell_name<T>;
+                    type $other_family_name;
+                }
 
                 $( $test_body )*
             }
         )+
 
         mod thread_local_tests {
-            cell_family::define!(type $family_name: $owner_name for $cell_name<T>);
-            cell_family::define!(type $other_family_name);
-
             $(
                 $( #[$attr] )*
                 fn $test_name() {
+                    cell_family::define! {
+                        #[thread_local] type $family_name: $owner_name for $cell_name<T>;
+                        #[thread_local] type $other_family_name;
+                    }
+
+                    $( $test_body )*
+                }
+            )+
+        }
+
+        mod wait_tests {
+            $(
+                $( #[$attr] )*
+                fn $test_name() {
+                    cell_family::define! {
+                        #[can_wait] type $family_name: $owner_name for $cell_name<T>;
+                        #[can_wait] type $other_family_name;
+                    }
+
                     $( $test_body )*
                 }
             )+

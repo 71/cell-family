@@ -5,24 +5,29 @@
 Cells inspired by [`qcell::TCell`][__link0] / [`qcell::TLCell`][__link1], with additional features.
 
 
+## A word of warning
+
+This crate uses `unsafe` quite a bit, and is not yet sufficiently tested (notably with regards to [`Send`][__link2] and [`Sync`][__link3] [`CellOwner`s][__link4]). With that said, the overall idea (based on [`tcell`][__link5]) is sound, and cells not based on mutexes should be safe to use.
+
+
 ## Overview
 
-`cell-family` provides the [`define!`][__link2] macro, which defines a new [`Family`][__link3]. For each family, a corresponding [`Cell`][__link4] and [`CellOwner`][__link5] can be created. Only a single [`CellOwner`][__link6] per family can exist at once, but multiple cells can exist at the same time.
+`cell-family` provides the [`define!`][__link6] macro, which defines a new [`Family`][__link7]. For each family, a corresponding [`Cell`][__link8] and [`CellOwner`][__link9] can be created. Only a single [`CellOwner`][__link10] per family can exist at once, but multiple cells can exist at the same time.
 
 For instance, you may define a family `FooFamily` as below:
 
 
 ```rust
-cell_family::define!(type FooFamily: FooCellOwner for FooCell<T>);
+cell_family::define!(#[thread_local] type FooFamily: FooCellOwner for FooCell<T>);
 ```
 
-This defines `FooFamily` (which implements [`Family`][__link7]) as well as `FooCellOwner` and `FooCell<T>`, aliases for [`CellOwner<FooFamily>`][__link8] and [`Cell<FooFamily, T>`][__link9] respectively.
+This defines `FooFamily` (which implements [`Family`][__link11]) as well as `FooCellOwner` and `FooCell<T>`, aliases for [`CellOwner<FooFamily>`][__link12] and [`Cell<FooFamily, T>`][__link13] respectively.
 
-One `FooCellOwner` can exist per thread, and thus `FooCellOwner` is **not** `Send`, since sending a `FooCellOwner` to another thread may allow two `FooCellOwner`s to co-exist in a single thread. To allow a single `FooCellOwner` per program (and thus make `FooCellOwner` `Send`), prefix `define!` with `static`:
+One `FooCellOwner` can exist per thread, and thus `FooCellOwner` is **not** `Send`, since sending a `FooCellOwner` to another thread may allow two `FooCellOwner`s to co-exist in a single thread. To allow a single `FooCellOwner` per program (and thus make `FooCellOwner` `Send`), remove `#[thread_local]` from the definition:
 
 
 ```rust
-cell_family::define!(static type FooFamily: FooCellOwner for FooCell<T>);
+cell_family::define!(type FooFamily: FooCellOwner for FooCell<T>);
 ```
 
 For both thread-local and thread-safe families, the API is the same:
@@ -43,59 +48,78 @@ assert_eq!(*a.get(&owner), 2);
 assert_eq!(*b.get(&owner), "baz");
 ```
 
- - [`FooCell::new(T)`][__link10] simple wraps `T` in a `#[repr(transparent)]` [`FooCell`][__link11] without performing any checks.
- - [`FooCell::get(&FooCellOwner)`][__link12] and [`FooCell::get_mut(&mut FooCellOwner)`][__link13] are constant-time operations that return `&T` and `&mut T` respectively without performing any runtime checks. Since a single [`FooCellOwner`][__link14] exists per program (or thread), the aliasing rules of each cell is enforced by Rust through the `FooCellOwner`, which is borrowed as long as each `FooCell` is borrowed.
- - `FooFamily` ensures that a single `FooCellOwner` exists within a program; if another `FooCellOwner` exists, [`FooCellOwner::new()`][__link15] will panic. A [`try_new()`][__link16] counterpart exists to avoid crashing in such a case.
+ - [`FooCell::new(T)`][__link14] simple wraps `T` in a `#[repr(transparent)]` [`FooCell`][__link15] without performing any checks.
+ - [`FooCell::get(&FooCellOwner)`][__link16] and [`FooCell::get_mut(&mut FooCellOwner)`][__link17] are constant-time operations that return `&T` and `&mut T` respectively without performing any runtime checks. Since a single [`FooCellOwner`][__link18] exists per program (or thread), the aliasing rules of each cell is enforced by Rust through the `FooCellOwner`, which is borrowed as long as each `FooCell` is borrowed.
+ - `FooFamily` ensures that a single `FooCellOwner` exists within a program; if another `FooCellOwner` exists, [`FooCellOwner::new()`][__link19] will panic. A [`try_new()`][__link20] counterpart exists to avoid crashing in such a case.
+ - If accessing `std` is fine, the `#[can_wait]` attribute may be used in [`define!`][__link21] to define a [`WaitFamily`][__link22] backed by a [`Mutex`][__link23] rather than by an [`AtomicBool`][__link24]. This allows the [`CellOwner`][__link25] to get a new function [`CellOwner::wait()`][__link26], which waits until the owner can be obtained. Due to internally relying on mutexes, such [`CellOwner`s][__link27] are [`Sync`][__link28] (as only one exists in the program at any given point) but not [`Send`][__link29] (as the thread that obtained ownership must also be the one to drop it).
+ - Similarly, a `#[can_wait(tokio)]` attribute may be used to define an [`AsyncWaitFamily`][__link30] whose [`CellOwner`s][__link31] define [`CellOwner::wait_async()`][__link32], which can be awaited. [`tokio`][__link33] (with the features `parking_lot` and `sync`) must be available in the defining crate to use this.
 
 
-## Benefits over [`qcell::TCell`][__link17] / [`qcell::TLCell`][__link18]
+## Benefits over [`qcell::TCell`][__link34] / [`qcell::TLCell`][__link35]
 
- - Unlike [`qcell::TCell`][__link19] (respectively [`qcell::TLCell`][__link20]), the `Family` `F` is in charge of ensuring that a single `CellOwner<F>` exists per program (respectively thread). By using macros to generate families, we only need a single [`AtomicBool`][__link21] (respectively [`Cell<bool>`][__link22]) for each family, thus requiring no allocations.
- - A few additional methods are provided; for instance, [`owner.get(c)`][__link23], [`owner.get_mut(c)`][__link24] and [`owner.try_get_mut(c)`][__link25] are provided, where `c` can be:
-	 - A tuple of [`Cell`][__link26]s.
-	 - An array of [`Cell`][__link27]s.
-	 - An array of references to [`Cell`][__link28]s.
-	 - A slice of [`Cell`][__link29]s.
+ - Unlike [`qcell::TCell`][__link36] (respectively [`qcell::TLCell`][__link37]), the `Family` `F` is in charge of ensuring that a single `CellOwner<F>` exists per program (respectively thread). By using macros to generate families, we only need a single [`AtomicBool`][__link38] (respectively [`Cell<bool>`][__link39]) for each family, thus requiring no allocations.
+ - A few additional methods are provided; for instance, [`owner.get(c)`][__link40], [`owner.get_mut(c)`][__link41] and [`owner.try_get_mut(c)`][__link42] are provided, where `c` can be:
+	 - A tuple of [`Cell`][__link43]s.
+	 - An array of [`Cell`][__link44]s.
+	 - An array of references to [`Cell`][__link45]s.
+	 - A slice of [`Cell`][__link46]s.
 	
 	
- - Thread-local and thread-safe [`Cell`][__link30]s (and [`CellOwner`][__link31]s) are backed by the same type; whether they are thread-local or thread-safe is determined by their [`Family`][__link32]: if it is thread-safe, it will also implement [`ThreadSafeFamily`][__link33]. This makes it easier to define generic functions over `Cell`s.
- - `cell-family` fully supports `#[no_std]`, **except** for thread-local families in non-`nightly` builds (since thread-local variables cannot be defined in `#[no_std]` without `#[thread_local]`, which is not stable).
- - `Cell` is [`Debug`][__link34], and will print a representation of its inner value if no `CellOwner` currently exists.
+ - Thread-local and thread-safe [`Cell`][__link47]s (and [`CellOwner`][__link48]s) are backed by the same type; whether they are thread-local or thread-safe is determined by their [`Family`][__link49]: if it is thread-safe, it will also implement [`ThreadSafeFamily`][__link50]. This makes it easier to define generic functions over `Cell`s.
+ - `cell-family` fully supports `#[no_std]`, **except** for thread-local families in non-`nightly` builds (since thread-local variables cannot be defined in `#[no_std]` without `#[thread_local]`, which is not stable) and for waitable families.
+ - `Cell` is [`Debug`][__link51], and will print a representation of its inner value if no `CellOwner` currently exists.
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEGyZKBNWOD3NPG4hWBK_oMjIWG3maRHTpBWgyG_cGPsi3PdHhYXKEG4WcwcOV5uUjG1mFIEgUcGSKG1zTMVR8Qp1MG5jXBSTGdjUqYWSBg2tjZWxsLWZhbWlseWUwLjEuMGtjZWxsX2ZhbWlseQ
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEGyZKBNWOD3NPG4hWBK_oMjIWG3maRHTpBWgyG_cGPsi3PdHhYXKEG5eZI64FZf9iG-JpbhEz0J94G8rnuAsFOb4HG4M0KkwuJv7OYWSBg2tjZWxsLWZhbWlseWUwLjEuMWtjZWxsX2ZhbWlseQ
  [__link0]: https://docs.rs/qcell/0.5.2/qcell/struct.TCell.html
  [__link1]: https://docs.rs/qcell/0.5.2/qcell/struct.TLCell.html
- [__link10]: https://docs.rs/cell-family/0.1.0/cell_family/?search=Cell::new
- [__link11]: https://docs.rs/cell-family/0.1.0/cell_family/struct.Cell.html
- [__link12]: https://docs.rs/cell-family/0.1.0/cell_family/?search=Cell::get
- [__link13]: https://docs.rs/cell-family/0.1.0/cell_family/?search=Cell::get_mut
- [__link14]: https://docs.rs/cell-family/0.1.0/cell_family/struct.CellOwner.html
- [__link15]: https://docs.rs/cell-family/0.1.0/cell_family/?search=CellOwner::new
- [__link16]: https://docs.rs/cell-family/0.1.0/cell_family/?search=CellOwner::try_new
- [__link17]: https://docs.rs/qcell/0.5.2/qcell/struct.TCell.html
- [__link18]: https://docs.rs/qcell/0.5.2/qcell/struct.TLCell.html
- [__link19]: https://docs.rs/qcell/0.5.2/qcell/struct.TCell.html
- [__link2]: https://docs.rs/cell-family/0.1.0/cell_family/?search=define
- [__link20]: https://docs.rs/qcell/0.5.2/qcell/struct.TLCell.html
- [__link21]: https://doc.rust-lang.org/stable/std/?search=sync::atomic::AtomicBool
- [__link22]: https://doc.rust-lang.org/stable/std/?search=cell::Cell
- [__link23]: https://docs.rs/cell-family/0.1.0/cell_family/?search=CellOwner::get
- [__link24]: https://docs.rs/cell-family/0.1.0/cell_family/?search=CellOwner::get_mut
- [__link25]: https://docs.rs/cell-family/0.1.0/cell_family/?search=CellOwner::try_get_mut
- [__link26]: https://docs.rs/cell-family/0.1.0/cell_family/struct.Cell.html
- [__link27]: https://docs.rs/cell-family/0.1.0/cell_family/struct.Cell.html
- [__link28]: https://docs.rs/cell-family/0.1.0/cell_family/struct.Cell.html
- [__link29]: https://docs.rs/cell-family/0.1.0/cell_family/struct.Cell.html
- [__link3]: https://docs.rs/cell-family/0.1.0/cell_family/trait.Family.html
- [__link30]: https://docs.rs/cell-family/0.1.0/cell_family/struct.Cell.html
- [__link31]: https://docs.rs/cell-family/0.1.0/cell_family/struct.CellOwner.html
- [__link32]: https://docs.rs/cell-family/0.1.0/cell_family/trait.Family.html
- [__link33]: https://docs.rs/cell-family/0.1.0/cell_family/trait.ThreadSafeFamily.html
- [__link34]: https://doc.rust-lang.org/stable/std/?search=fmt::Debug
- [__link4]: https://docs.rs/cell-family/0.1.0/cell_family/struct.Cell.html
- [__link5]: https://docs.rs/cell-family/0.1.0/cell_family/struct.CellOwner.html
- [__link6]: https://docs.rs/cell-family/0.1.0/cell_family/struct.CellOwner.html
- [__link7]: https://docs.rs/cell-family/0.1.0/cell_family/trait.Family.html
- [__link8]: https://docs.rs/cell-family/0.1.0/cell_family/struct.CellOwner.html
- [__link9]: https://docs.rs/cell-family/0.1.0/cell_family/struct.Cell.html
+ [__link10]: https://docs.rs/cell-family/0.1.1/cell_family/struct.CellOwner.html
+ [__link11]: https://docs.rs/cell-family/0.1.1/cell_family/trait.Family.html
+ [__link12]: https://docs.rs/cell-family/0.1.1/cell_family/struct.CellOwner.html
+ [__link13]: https://docs.rs/cell-family/0.1.1/cell_family/struct.Cell.html
+ [__link14]: https://docs.rs/cell-family/0.1.1/cell_family/?search=Cell::new
+ [__link15]: https://docs.rs/cell-family/0.1.1/cell_family/struct.Cell.html
+ [__link16]: https://docs.rs/cell-family/0.1.1/cell_family/?search=Cell::get
+ [__link17]: https://docs.rs/cell-family/0.1.1/cell_family/?search=Cell::get_mut
+ [__link18]: https://docs.rs/cell-family/0.1.1/cell_family/struct.CellOwner.html
+ [__link19]: https://docs.rs/cell-family/0.1.1/cell_family/?search=CellOwner::new
+ [__link2]: https://doc.rust-lang.org/stable/std/marker/trait.Send.html
+ [__link20]: https://docs.rs/cell-family/0.1.1/cell_family/?search=CellOwner::try_new
+ [__link21]: `define!`
+ [__link22]: https://docs.rs/cell-family/0.1.1/cell_family/trait.WaitFamily.html
+ [__link23]: https://doc.rust-lang.org/stable/std/?search=sync::Mutex
+ [__link24]: https://doc.rust-lang.org/stable/std/?search=sync::atomic::AtomicBool
+ [__link25]: https://docs.rs/cell-family/0.1.1/cell_family/struct.CellOwner.html
+ [__link26]: `CellOwner::wait()`
+ [__link27]: https://docs.rs/cell-family/0.1.1/cell_family/struct.CellOwner.html
+ [__link28]: https://doc.rust-lang.org/stable/std/marker/trait.Sync.html
+ [__link29]: https://doc.rust-lang.org/stable/std/marker/trait.Send.html
+ [__link3]: https://doc.rust-lang.org/stable/std/marker/trait.Sync.html
+ [__link30]: https://docs.rs/cell-family/0.1.1/cell_family/trait.AsyncWaitFamily.html
+ [__link31]: https://docs.rs/cell-family/0.1.1/cell_family/struct.CellOwner.html
+ [__link32]: `CellOwner::wait_async()`
+ [__link33]: https://tokio.rs
+ [__link34]: https://docs.rs/qcell/0.5.2/qcell/struct.TCell.html
+ [__link35]: https://docs.rs/qcell/0.5.2/qcell/struct.TLCell.html
+ [__link36]: https://docs.rs/qcell/0.5.2/qcell/struct.TCell.html
+ [__link37]: https://docs.rs/qcell/0.5.2/qcell/struct.TLCell.html
+ [__link38]: https://doc.rust-lang.org/stable/std/?search=sync::atomic::AtomicBool
+ [__link39]: https://doc.rust-lang.org/stable/std/?search=cell::Cell
+ [__link4]: https://docs.rs/cell-family/0.1.1/cell_family/struct.CellOwner.html
+ [__link40]: https://docs.rs/cell-family/0.1.1/cell_family/?search=CellOwner::get
+ [__link41]: https://docs.rs/cell-family/0.1.1/cell_family/?search=CellOwner::get_mut
+ [__link42]: https://docs.rs/cell-family/0.1.1/cell_family/?search=CellOwner::try_get_mut
+ [__link43]: https://docs.rs/cell-family/0.1.1/cell_family/struct.Cell.html
+ [__link44]: https://docs.rs/cell-family/0.1.1/cell_family/struct.Cell.html
+ [__link45]: https://docs.rs/cell-family/0.1.1/cell_family/struct.Cell.html
+ [__link46]: https://docs.rs/cell-family/0.1.1/cell_family/struct.Cell.html
+ [__link47]: https://docs.rs/cell-family/0.1.1/cell_family/struct.Cell.html
+ [__link48]: https://docs.rs/cell-family/0.1.1/cell_family/struct.CellOwner.html
+ [__link49]: https://docs.rs/cell-family/0.1.1/cell_family/trait.Family.html
+ [__link5]: https://docs.rs/qcell/0.5.2/qcell/struct.TCell.html
+ [__link50]: https://docs.rs/cell-family/0.1.1/cell_family/trait.ThreadSafeFamily.html
+ [__link51]: https://doc.rust-lang.org/stable/std/?search=fmt::Debug
+ [__link6]: https://docs.rs/cell-family/0.1.1/cell_family/?search=define
+ [__link7]: https://docs.rs/cell-family/0.1.1/cell_family/trait.Family.html
+ [__link8]: https://docs.rs/cell-family/0.1.1/cell_family/struct.Cell.html
+ [__link9]: https://docs.rs/cell-family/0.1.1/cell_family/struct.CellOwner.html

@@ -1,4 +1,5 @@
 cell_family::define! {
+    #[thread_local]
     type Family: CellOwner for Cell<T>;
 }
 

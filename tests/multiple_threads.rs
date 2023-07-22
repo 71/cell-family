@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 cell_family::define! {
+    #[thread_local]
     type PerThreadFamily: PerThreadCellOwner for PerThreadCell<T>;
 }
 
@@ -32,7 +33,7 @@ fn one_owner_per_thread() {
 #[test]
 fn one_owner_per_program() {
     cell_family::define! {
-        static type Family: CellOwner for Cell<T>;
+        type Family: CellOwner for Cell<T>;
     }
 
     let mut owner = CellOwner::new();
@@ -57,7 +58,7 @@ fn one_owner_per_program() {
 #[test]
 fn cannot_race() {
     cell_family::define! {
-        static type Family: CellOwner for Cell<T>;
+        type Family: CellOwner for Cell<T>;
     }
 
     let threads = threads();
@@ -94,7 +95,7 @@ fn cannot_race() {
 #[test]
 fn cannot_race_after_drop() {
     cell_family::define! {
-        static type Family: CellOwner for Cell<T>;
+        type Family: CellOwner for Cell<T>;
     }
 
     let threads = threads();
@@ -132,7 +133,7 @@ fn cannot_race_after_drop() {
 #[test]
 fn cannot_race_cell() {
     cell_family::define! {
-        static type Family: CellOwner for Cell<T>;
+        type Family: CellOwner for Cell<T>;
     }
 
     let threads = threads();

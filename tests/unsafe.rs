@@ -14,16 +14,16 @@ macro_rules! test_all {
             // Since tests run in parallel, we create new families for each test.
             $( #[$attr] )*
             fn $test_name() {
-                cell_family::define!(static type $family_name: $owner_name for $cell_name<T>);
-                cell_family::define!(unsafe static type $other_family_name: $other_owner_name for $other_cell_name<T>);
+                cell_family::define!(type $family_name: $owner_name for $cell_name<T>);
+                cell_family::define!(unsafe type $other_family_name: $other_owner_name for $other_cell_name<T>);
 
                 $( $test_body )*
             }
         )+
 
         mod thread_local_tests {
-            cell_family::define!(type $family_name: $owner_name for $cell_name<T>);
-            cell_family::define!(unsafe type $other_family_name: $other_owner_name for $other_cell_name<T>);
+            cell_family::define!(#[thread_local] type $family_name: $owner_name for $cell_name<T>);
+            cell_family::define!(#[thread_local] unsafe type $other_family_name: $other_owner_name for $other_cell_name<T>);
 
             $(
                 $( #[$attr] )*

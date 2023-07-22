@@ -2,7 +2,7 @@
 name         = "cell-family"
 description  = "Cheap cells accessed through unique owners"
 authors      = ["Grégoire Geis <opensource@gregoirege.is>"]
-version      = "0.1.0"
+version      = "0.1.1"
 license      = "ISC"
 edition      = "2021"
 rust-version = "1.61"  # MSRV
@@ -21,4 +21,6 @@ rustversion = "1.0"
 rustversion = "1.0"
 
 [dev-dependencies]
+static_assertions = "1.1"
+tokio = { version = "1.29", features = ["macros", "parking_lot", "rt", "sync", "time"] }
 trybuild = "1.0"

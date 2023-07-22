@@ -1,6 +1,13 @@
 //! Cells inspired by [`qcell::TCell`][tcell] / [`qcell::TLCell`][tlcell], with
 //! additional features.
 //!
+//! # A word of warning
+//!
+//! This crate uses `unsafe` quite a bit, and is not yet sufficiently tested
+//! (notably with regards to [`Send`] and [`Sync`] [`CellOwner`s](CellOwner)).
+//! With that said, the overall idea (based on [`tcell`][tcell]) is sound, and
+//! cells not based on mutexes should be safe to use.
+//!
 //! # Overview
 //!
 //! `cell-family` provides the [`define!`](crate::define) macro, which defines a
@@ -12,7 +19,7 @@
 //!
 //! ```
 //! # #![cfg_attr(feature = "nightly", feature(thread_local))]
-//! cell_family::define!(type FooFamily: FooCellOwner for FooCell<T>);
+//! cell_family::define!(#[thread_local] type FooFamily: FooCellOwner for FooCell<T>);
 //! ```
 //!
 //! This defines `FooFamily` (which implements [`Family`]) as well as
@@ -22,11 +29,11 @@
 //! One `FooCellOwner` can exist per thread, and thus `FooCellOwner` is **not**
 //! `Send`, since sending a `FooCellOwner` to another thread may allow two
 //! `FooCellOwner`s to co-exist in a single thread. To allow a single
-//! `FooCellOwner` per program (and thus make `FooCellOwner` `Send`),
-//! prefix `define!` with `static`:
+//! `FooCellOwner` per program (and thus make `FooCellOwner` `Send`), remove
+//! `#[thread_local]` from the definition:
 //!
 //! ```
-//! cell_family::define!(static type FooFamily: FooCellOwner for FooCell<T>);
+//! cell_family::define!(type FooFamily: FooCellOwner for FooCell<T>);
 //! ```
 //!
 //! For both thread-local and thread-safe families, the API is the same:
@@ -61,6 +68,20 @@
 //!   if another `FooCellOwner` exists, [`FooCellOwner::new()`](CellOwner::new)
 //!   will panic. A [`try_new()`](CellOwner::try_new) counterpart exists to
 //!   avoid crashing in such a case.
+//! - If accessing `std` is fine, the `#[can_wait]` attribute may be used in
+//!   [`define!`] to define a [`WaitFamily`] backed by a
+//!   [`Mutex`](std::sync::Mutex) rather than by an
+//!   [`AtomicBool`](std::sync::atomic::AtomicBool). This allows the
+//!   [`CellOwner`] to get a new function [`CellOwner::wait()`], which waits
+//!   until the owner can be obtained. Due to internally relying on mutexes,
+//!   such [`CellOwner`s](CellOwner) are [`Sync`] (as only one exists in the
+//!   program at any given point) but not [`Send`] (as the thread that obtained
+//!   ownership must also be the one to drop it).
+//! - Similarly, a `#[can_wait(tokio)]` attribute may be used to define an
+//!   [`AsyncWaitFamily`] whose [`CellOwner`s](CellOwner) define
+//!   [`CellOwner::wait_async()`], which can be awaited.
+//!   [`tokio`](https://tokio.rs) (with the features `parking_lot` and `sync`)
+//!   must be available in the defining crate to use this.
 //!
 //! # Benefits over [`qcell::TCell`][tcell] / [`qcell::TLCell`][tlcell]
 //!
@@ -86,7 +107,8 @@
 //!   over `Cell`s.
 //! - `cell-family` fully supports `#[no_std]`, **except** for thread-local
 //!   families in non-`nightly` builds (since thread-local variables cannot be
-//!   defined in `#[no_std]` without `#[thread_local]`, which is not stable).
+//!   defined in `#[no_std]` without `#[thread_local]`, which is not stable) and
+//!   for waitable families.
 //! - `Cell` is [`Debug`](std::fmt::Debug), and will print a representation of
 //!   its inner value if no `CellOwner` currently exists.
 //!
@@ -97,6 +119,11 @@
 #![cfg_attr(
     feature = "nightly",
     feature(maybe_uninit_array_assume_init, maybe_uninit_uninit_array, new_uninit)
+)]
+#![deny(
+    clippy::missing_safety_doc,
+    clippy::multiple_unsafe_ops_per_block,
+    clippy::undocumented_unsafe_blocks
 )]
 
 #[rustversion::nightly]
@@ -231,20 +258,48 @@ pub struct CellOwner<F: Family> {
     _marker: PhantomData<(NotSendOrSync, Invariant<F>)>,
 }
 
-// SAFETY: when `F` is `Family`, only one `CellOwner<F>` can be created per
-// program, so it is then safe to send it (or a reference to it) to other
-// threads.
-unsafe impl<F: ThreadSafeFamily> Send for CellOwner<F> {}
+// SAFETY: when `F` is `ThreadSafeFamily`, only one `CellOwner<F>` can be
+//   created per program, so it is then safe to refer to it from multiple
+//   threads at once, as it proves ownership of its `Cell`s accross the entire
+//   program. Data races arising from reading _one_ cell from multiple threads
+//   using the same owner are impossible as a `Cell<T>` is only `Sync` if its
+//   underlying data is `Sync` as well.
 unsafe impl<F: ThreadSafeFamily> Sync for CellOwner<F> {}
+
+// SAFETY: when `F` is `SendThreadSafeFamily`, whatever static data it uses to
+//   create and destroy `CellOwner`s is itself `Send`, so performing operations
+//   on it from multiple threads is safe.
+unsafe impl<F: SendThreadSafeFamily> Send for CellOwner<F> {}
+
+#[cfg(test)]
+const _: () = {
+    define! {
+        type TestThreadSafe;
+        #[thread_local]
+        type TestThreadLocal;
+        #[can_wait]
+        type TestCanWait;
+    }
+
+    static_assertions::assert_impl_all!(CellOwner<TestThreadSafe>: Send, Sync);
+    static_assertions::assert_not_impl_any!(CellOwner<TestThreadLocal>: Send, Sync);
+    static_assertions::assert_impl_all!(CellOwner<TestCanWait>: Sync);
+    static_assertions::assert_not_impl_any!(CellOwner<TestCanWait>: Send);
+};
 
 impl<F: Family> Drop for CellOwner<F> {
     fn drop(&mut self) {
-        F::unborrow_owner();
+        // SAFETY: the CellOwner was created by calling `borrow_owner()`, and
+        //   can therefore unborrow it.
+        unsafe {
+            F::unborrow_owner();
+        }
     }
 }
 
 impl<F: Family> CellOwner<F> {
-    /// Creates the unique [`CellOwner<F>`] in the current thread, panicking if
+    /// Creates the unique [`CellOwner<F>`] in the current thread (for a
+    /// [`Family`]) or program (for a [`ThreadSafeFamily`]), panicking if
     /// another [`CellOwner<F>`] already exists in this thread.
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
@@ -257,8 +312,9 @@ impl<F: Family> CellOwner<F> {
         }
     }
 
-    /// Creates the unique [`CellOwner<F>`] in the current thread, returning
-    /// [`None`] if another [`CellOwner<F>`] already exists in this thread.
+    /// Creates the unique [`CellOwner<F>`] in the current thread (for a
+    /// [`Family`]) or program (for a [`ThreadSafeFamily`]), returning [`None`]
+    /// if another [`CellOwner<F>`] already exists in this thread.
     pub fn try_new() -> Option<Self> {
         F::borrow_owner().ok().map(|()| CellOwner {
             _marker: PhantomData,
@@ -270,8 +326,8 @@ impl<F: Family> CellOwner<F> {
     ///
     /// # Safety
     /// When calling this method, you have to ensure that no other [`CellOwner`]
-    /// exists in this thread (for [thread-local families](PerThreadFamily)) or
-    /// in the entire program (for [program families](Family)).
+    /// exists in this thread (for [thread-local families](Family)) or
+    /// in the entire program (for [program families](ThreadSafeFamily)).
     pub unsafe fn new_unchecked() -> Self {
         debug_assert!(F::borrow_owner().is_ok());
 
@@ -428,6 +484,30 @@ impl<F: Family> CellOwner<F> {
     }
 }
 
+impl<F: WaitFamily> CellOwner<F> {
+    /// Creates the unique [`CellOwner<F>`] in the current program, waiting if
+    /// one already exists.
+    pub fn wait() -> Self {
+        F::borrow_owner_or_wait();
+
+        Self {
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<F: AsyncWaitFamily> CellOwner<F> {
+    /// Creates the unique [`CellOwner<F>`] in the current program,
+    /// asynchronously waiting if one already exists.
+    pub async fn wait_async() -> Self {
+        F::borrow_owner_or_wait_async().await;
+
+        Self {
+            _marker: PhantomData,
+        }
+    }
+}
+
 /// `F` marker type in [`Cell`] and [`CellOwner`].
 ///
 /// Note that this trait does not enable usage of [`CellOwner`s](CellOwner) from
@@ -449,7 +529,10 @@ pub unsafe trait Family: 'static {
     /// Statically releases the borrow on the thread-local or global
     /// [`CellOwner`] following a successful call to
     /// [`borrow_owner()`](Family::borrow_owner).
-    fn unborrow_owner();
+    ///
+    /// # Safety
+    /// Must only be called by the [`Drop`] implementation of [`CellOwner`].
+    unsafe fn unborrow_owner();
 }
 
 /// An extension of [`Family`] to define [`CellOwner`s](CellOwner) that can be
@@ -461,6 +544,51 @@ pub unsafe trait Family: 'static {
 /// invariants required for [`CellOwner`] and [`Cell`] to be safe to use. Do not
 /// implement.
 pub unsafe trait ThreadSafeFamily: Family {}
+
+/// An extension of [`ThreadSafeFamily`] to define [`Send`]
+/// [`CellOwner`s](CellOwner).
+///
+/// # Safety
+/// This trait is automatically implemented by [`define!`] since it validates
+/// invariants required for [`CellOwner`] and [`Cell`] to be safe to use. Do not
+/// implement.
+pub unsafe trait SendThreadSafeFamily: ThreadSafeFamily {}
+
+/// An extension of [`ThreadSafeFamily`] implemented for families that can wait
+/// to acquire [`CellOwner`]s.
+///
+/// Use the `#[can_wait]` attribute in [`define!`] to obtain a family that
+/// implements this trait.
+///
+/// # Safety
+/// This trait is automatically implemented by [`define!`] since it validates
+/// invariants required for [`CellOwner`] and [`Cell`] to be safe to use. Do not
+/// implement.
+pub unsafe trait WaitFamily: ThreadSafeFamily {
+    /// Statically marks the global [`CellOwner`] as borrowed, waiting if it is
+    /// already borrowed by another thread.
+    fn borrow_owner_or_wait();
+}
+
+/// An extension of [`ThreadSafeFamily`] implemented for families that can
+/// asynchronously wait to acquire [`CellOwner`]s.
+///
+/// Use the `#[can_wait(tokio)]` attribute in [`define!`] to obtain a family
+/// that implements this trait. The tokio features "sync" and "parking_lot" are
+/// required.
+///
+/// # Safety
+/// This trait is automatically implemented by [`define!`] since it validates
+/// invariants required for [`CellOwner`] and [`Cell`] to be safe to use. Do not
+/// implement.
+pub unsafe trait AsyncWaitFamily: SendThreadSafeFamily {
+    /// The future returned by [`borrow_owner_or_wait_async()`].
+    type Future: core::future::Future<Output = ()> + Send + Sync;
+
+    /// Statically marks the global [`CellOwner`] as borrowed, asynchronously
+    /// waiting if it is already borrowed by another thread.
+    fn borrow_owner_or_wait_async() -> Self::Future;
+}
 
 pub(crate) mod private {
     /// Trait that cannot be implemented by external traits, required to
@@ -501,3 +629,77 @@ struct Invariant<T>(fn(T) -> T);
 /// A type that's neither [`Send`] nor [`Sync`], which will propagate to any
 /// `struct` that contains it (including in a [`PhantomData`]).
 struct NotSendOrSync(*const ());
+
+#[cfg(test)]
+const _: () = {
+    static_assertions::assert_not_impl_any!(NotSendOrSync: Send, Sync);
+};
+
+#[cfg(feature = "std")]
+#[doc(hidden)]
+/// A [`Mutex`](std::sync::Mutex) which must be manually locked and unlocked.
+pub struct ManualMutex {
+    mutex: std::sync::Mutex<()>,
+    guard: std::cell::Cell<Option<std::sync::MutexGuard<'static, ()>>>,
+}
+
+#[cfg(feature = "std")]
+// SAFETY: `ManualMutex` is only created or destroyed from a `CellOwner` with a
+//   `WaitFamily`, which itself is _not_ `Send`, and therefore which will always
+//   access the `!Sync` `guard` from the same thread.
+unsafe impl Sync for ManualMutex {}
+
+#[cfg(feature = "std")]
+impl ManualMutex {
+    /// Returns a new unlocked [`ManualMutex`].
+    pub const fn new() -> Self {
+        Self {
+            mutex: std::sync::Mutex::new(()),
+            guard: std::cell::Cell::new(None),
+        }
+    }
+
+    /// Locks the mutex until calling `unlock()`, returning `false` if it is
+    /// already locked.
+    pub fn try_lock(&'static self) -> bool {
+        match self.mutex.try_lock() {
+            Ok(lock) => {
+                let guard = self.guard.replace(Some(lock));
+                debug_assert!(guard.is_none());
+                true
+            }
+            Err(std::sync::TryLockError::Poisoned(poisoned)) => {
+                let guard = self.guard.replace(Some(poisoned.into_inner()));
+                debug_assert!(guard.is_none());
+                true
+            }
+            Err(std::sync::TryLockError::WouldBlock) => false,
+        }
+    }
+
+    /// Locks the mutex until calling `unlock()`, waiting if it is already
+    /// locked.
+    pub fn lock(&'static self) {
+        match self.mutex.lock() {
+            Ok(lock) => {
+                let guard = self.guard.replace(Some(lock));
+                debug_assert!(guard.is_none());
+            }
+            Err(poisoned) => {
+                let guard = self.guard.replace(Some(poisoned.into_inner()));
+                debug_assert!(guard.is_none());
+            }
+        }
+    }
+
+    /// Unlocks a previously locked mutex.
+    ///
+    /// # Safety
+    /// The mutex must have been previously successfully locked with `lock()` or
+    /// or `try_lock()` by **the same thread as the one calling this function**.
+    pub unsafe fn unlock(&'static self) {
+        let guard = self.guard.take();
+
+        debug_assert!(guard.is_some());
+    }
+}
