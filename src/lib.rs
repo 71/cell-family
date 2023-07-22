@@ -120,6 +120,7 @@
     feature = "nightly",
     feature(maybe_uninit_array_assume_init, maybe_uninit_uninit_array, new_uninit)
 )]
+#![cfg_attr(all(test, feature = "nightly"), feature(thread_local))]
 #![deny(
     clippy::missing_safety_doc,
     clippy::multiple_unsafe_ops_per_block,
@@ -278,12 +279,15 @@ const _: () = {
         #[thread_local]
         type TestThreadLocal;
         #[can_wait]
+        #[cfg(feature = "std")]
         type TestCanWait;
     }
 
     static_assertions::assert_impl_all!(CellOwner<TestThreadSafe>: Send, Sync);
     static_assertions::assert_not_impl_any!(CellOwner<TestThreadLocal>: Send, Sync);
+    #[cfg(feature = "std")]
     static_assertions::assert_impl_all!(CellOwner<TestCanWait>: Sync);
+    #[cfg(feature = "std")]
     static_assertions::assert_not_impl_any!(CellOwner<TestCanWait>: Send);
 };
 
@@ -635,6 +639,7 @@ const _: () = {
     static_assertions::assert_not_impl_any!(NotSendOrSync: Send, Sync);
 };
 
+#[rustversion::since(1.63)]
 #[cfg(feature = "std")]
 #[doc(hidden)]
 /// A [`Mutex`](std::sync::Mutex) which must be manually locked and unlocked.
@@ -643,12 +648,14 @@ pub struct ManualMutex {
     guard: std::cell::Cell<Option<std::sync::MutexGuard<'static, ()>>>,
 }
 
+#[rustversion::since(1.63)]
 #[cfg(feature = "std")]
 // SAFETY: `ManualMutex` is only created or destroyed from a `CellOwner` with a
 //   `WaitFamily`, which itself is _not_ `Send`, and therefore which will always
 //   access the `!Sync` `guard` from the same thread.
 unsafe impl Sync for ManualMutex {}
 
+#[rustversion::since(1.63)]
 #[cfg(feature = "std")]
 impl ManualMutex {
     /// Returns a new unlocked [`ManualMutex`].

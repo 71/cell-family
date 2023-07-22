@@ -37,6 +37,7 @@ macro_rules! test_all {
             )+
         }
 
+        #[cfg(feature = "std")]
         mod wait_tests {
             $(
                 $( #[$attr] )*

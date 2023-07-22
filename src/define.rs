@@ -330,43 +330,63 @@ macro_rules! define_aliases {
     ( $vis: vis $family_name: ident ) => {};
 }
 
+/// Splits all attributes into those important to us (`can_wait`,
+/// `thread_local`) and the others, then proceeds with the expansion.
 #[macro_export]
 #[doc(hidden)]
 macro_rules! split_attrs_then_define {
     (
         #[cfg($unsafe_debug_cfg: meta)]
-        ( $(#[doc $($doc: tt)*])* ) ( $(#[$other: ident $($other_rest: tt)*])? ) #[doc $($t: tt)+] $( # $rest: tt )*
+        ( $(#[$def: ident $($def_rest: tt)*])* ) ( $(#[$other: ident $($other_rest: tt)*])* )
+        #[can_wait $($t: tt)*] $( # $rest: tt )*
         $vis: vis type $family_name: ident
     ) => {
         $crate::split_attrs_then_define! {
             #[cfg($unsafe_debug_cfg)]
-            ($( #[doc $($doc)*] )* #[doc $($t)+]) ($(#[$other $($other_rest)*])?) $(#$rest)*
+            ($( #[$def $($def_rest)*] )* #[can_wait $($t)*]) ($(#[$other $($other_rest)*])*)
+            $(#$rest)*
+            $vis type $family_name
+        }
+    };
+    (
+        #[cfg($unsafe_debug_cfg: meta)]
+        ( $(#[$def: ident $($def_rest: tt)*])* ) ( $(#[$other: ident $($other_rest: tt)*])* )
+        #[thread_local $($t: tt)*] $( # $rest: tt )*
+        $vis: vis type $family_name: ident
+    ) => {
+        $crate::split_attrs_then_define! {
+            #[cfg($unsafe_debug_cfg)]
+            ($( #[$def $($def_rest)*] )* #[thread_local $($t)*]) ($(#[$other $($other_rest)*])*)
+            $(#$rest)*
             $vis type $family_name
         }
     };
 
     (
         #[cfg($unsafe_debug_cfg: meta)]
-        ( $(#[doc $($doc: tt)*])* ) ( $(#[$other: ident $($other_rest: tt)*])? ) #[$a: ident $($t: tt)*] $( # $rest: tt )*
+        ( $(#[$def: ident $($def_rest: tt)*])* ) ( $(#[$other: ident $($other_rest: tt)*])* )
+        #[$new_other: ident $($new_other_rest: tt)*] $( # $rest: tt )*
         $vis: vis type $family_name: ident
     ) => {
         $crate::split_attrs_then_define! {
             #[cfg($unsafe_debug_cfg)]
-            ($( #[doc $($doc)*] )*) ($(#[$other $($other_rest)*])? #[$a $($t)*]) $(#$rest)*
+            ($( #[$def $($def_rest)*] )*) ($(#[$other $($other_rest)*])* #[$new_other $($new_other_rest)*])
+            $(#$rest)*
             $vis type $family_name
         }
     };
 
     (
         #[cfg($unsafe_debug_cfg: meta)]
-        ( $(#[doc $($doc: tt)*])* ) ( $(#[$other: ident $($other_rest: tt)*])? )
+        ( $(#[$def: ident $($def_rest: tt)*])* ) ( $(#[$other: ident $($other_rest: tt)*])* )
         $vis: vis type $family_name: ident
     ) => {
-        $( #[doc $($doc)*] )*
+        $( #[$other $($other_rest)*] )*
         $vis enum $family_name {}
 
+        $( #[$other $($other_rest)*] )*
         const _: () = {
-            $crate::impl_family!(($(#[$other $($other_rest)*])?) $family_name #[cfg($unsafe_debug_cfg)]);
+            $crate::impl_family!(($(#[$def $($def_rest)*])*) $family_name #[cfg($unsafe_debug_cfg)]);
         };
     };
 }

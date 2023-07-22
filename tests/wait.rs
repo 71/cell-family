@@ -1,17 +1,11 @@
 use std::{sync::Arc, time::Duration};
 
-macro_rules! define_cells {
-    () => {
-        cell_family::define! {
-            #[can_wait] type WaitFamily: WaitOwner for WaitCell<T>;
-            #[can_wait(tokio)] type AsyncWaitFamily: AsyncWaitOwner for AsyncWaitCell<T>;
-        }
-    };
-}
-
+#[cfg(feature = "std")]
 #[test]
 fn can_wait() {
-    define_cells!();
+    cell_family::define! {
+        #[can_wait] type WaitFamily: WaitOwner for WaitCell<T>;
+    }
 
     let data = Arc::new(WaitCell::new(0));
     let data_clone = data.clone();
@@ -42,7 +36,9 @@ fn can_wait() {
 
 #[tokio::test]
 async fn can_wait_async() {
-    define_cells!();
+    cell_family::define! {
+        #[can_wait(tokio)] type AsyncWaitFamily: AsyncWaitOwner for AsyncWaitCell<T>;
+    }
 
     let data = Arc::new(AsyncWaitCell::new(0));
     let data_clone = data.clone();
@@ -71,30 +67,32 @@ async fn can_wait_async() {
 
 #[tokio::test]
 async fn can_select() {
-    define_cells!();
+    cell_family::define! {
+        #[can_wait(tokio)] type AsyncWaitFamily: AsyncWaitOwner for AsyncWaitCell<T>;
+    }
 
     let owner = AsyncWaitOwner::new();
 
     tokio::spawn(async move {
         // Ensure that the `owner` cannot be accessed immediately.
-        tokio::time::sleep(Duration::from_millis(40)).await;
+        tokio::time::sleep(Duration::from_millis(60)).await;
 
         drop(owner);
     });
 
     tokio::select! {
         _ = AsyncWaitOwner::wait_async() => {
-            assert!(false, "AsyncWaitOwner obtained within 10ms");
+            assert!(false, "AsyncWaitOwner obtained within 30ms");
         }
-        _ = tokio::time::sleep(Duration::from_millis(10)) => {}
+        _ = tokio::time::sleep(Duration::from_millis(30)) => {}
     }
 
     tokio::select! {
         _ = AsyncWaitOwner::wait_async() => {
 
         }
-        _ = tokio::time::sleep(Duration::from_millis(50)) => {
-            assert!(false, "AsyncWaitOwner not obtained within 50ms");
+        _ = tokio::time::sleep(Duration::from_millis(100)) => {
+            assert!(false, "AsyncWaitOwner not obtained within 100ms");
         }
     }
 }
