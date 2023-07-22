@@ -205,6 +205,7 @@ impl<F: Family, T: ?Sized> Cell<F, T> {
     /// Returns a reference to the underlying value of the cell, using the
     /// reference to the given [`CellOwner`] as a proof that this cell is not
     /// currently mutably borrowed.
+    #[allow(clippy::needless_pass_by_ref_mut)]
     pub fn get_mut<'a>(&'a self, owner: &'a mut CellOwner<F>) -> &'a mut T {
         let _ = owner;
 
