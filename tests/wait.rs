@@ -83,7 +83,7 @@ async fn can_select() {
 
     tokio::select! {
         _ = AsyncWaitOwner::wait_async() => {
-            assert!(false, "AsyncWaitOwner obtained within 30ms");
+            panic!("AsyncWaitOwner obtained within 30ms");
         }
         _ = tokio::time::sleep(Duration::from_millis(30)) => {}
     }
@@ -93,7 +93,7 @@ async fn can_select() {
 
         }
         _ = tokio::time::sleep(Duration::from_millis(100)) => {
-            assert!(false, "AsyncWaitOwner not obtained within 100ms");
+            panic!("AsyncWaitOwner not obtained within 100ms");
         }
     }
 }

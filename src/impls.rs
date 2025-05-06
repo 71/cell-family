@@ -50,7 +50,7 @@ impl<F: Family, T: Debug + ?Sized> Debug for Cell<F, T> {
     }
 }
 
-impl<'a, F: Family, T: ?Sized> private::Sealed<F> for &'a Cell<F, T> {}
+impl<F: Family, T: ?Sized> private::Sealed<F> for &Cell<F, T> {}
 
 impl<'a, F: Family, T: ?Sized> GetWithOwner<'a, F> for &'a Cell<F, T> {
     type Get = &'a T;
@@ -72,7 +72,7 @@ impl<'a, F: Family, T: ?Sized> GetMutWithOwner<'a, F> for &'a Cell<F, T> {
     }
 }
 
-impl<'a, F: Family, T, const N: usize> private::Sealed<F> for [&'a Cell<F, T>; N] {}
+impl<F: Family, T, const N: usize> private::Sealed<F> for [&Cell<F, T>; N] {}
 
 impl<'a, F: Family, T, const N: usize> GetWithOwner<'a, F> for [&'a Cell<F, T>; N] {
     type Get = [&'a T; N];
@@ -116,7 +116,7 @@ impl<'a, F: Family, T, const N: usize> GetMutWithOwner<'a, F> for [&'a Cell<F, T
     }
 }
 
-impl<'a, F: Family, T, const N: usize> private::Sealed<F> for &'a [Cell<F, T>; N] {}
+impl<F: Family, T, const N: usize> private::Sealed<F> for &[Cell<F, T>; N] {}
 
 impl<'a, F: Family, T, const N: usize> GetWithOwner<'a, F> for &'a [Cell<F, T>; N] {
     type Get = [&'a T; N];
@@ -163,15 +163,23 @@ impl<'a, F: Family, T, const N: usize> GetMutWithOwner<'a, F> for &'a [Cell<F, T
 
 #[inline]
 fn uninit_array<T, const N: usize>() -> [MaybeUninit<T>; N] {
-    #[cfg(feature = "nightly")]
-    {
-        MaybeUninit::uninit_array()
+    // We must wrap the body in a macro since putting `const { ... }` in a function is invalid in
+    // older versions of Rust, even if this function is erased by `#[rustversion]`.
+    #[rustversion::since(1.80)]
+    macro_rules! body {
+        () => {
+            [const { MaybeUninit::uninit() }; N]
+        };
     }
-    #[cfg(not(feature = "nightly"))]
-    {
-        // SAFETY: an uninitialized `[MaybeUninit<T>; N]` is valid.
-        unsafe { MaybeUninit::<[MaybeUninit<T>; N]>::uninit().assume_init() }
+    #[rustversion::before(1.80)]
+    macro_rules! body {
+        () => {
+            // SAFETY: an uninitialized `[MaybeUninit<T>; N]` is valid.
+            unsafe { MaybeUninit::<[MaybeUninit<T>; N]>::uninit().assume_init() }
+        };
     }
+
+    body!()
 }
 
 #[inline]
@@ -182,18 +190,20 @@ unsafe fn array_assume_init<T, const N: usize>(array: [MaybeUninit<T>; N]) -> [T
     }
     #[cfg(not(feature = "nightly"))]
     {
-        // SAFETY: see `MaybeUninit::array_assume_init`.
+        // SAFETY: we own `array` (ensuring no aliasing), and we will drop it as an array of uninit
+        // values, hence we will not touch its contents again.
         (&array as *const _ as *const [T; N]).read()
     }
 }
 
-#[rustversion::nightly]
-impl<'a, F: Family, T> private::Sealed<F> for &'a [Cell<F, T>] {}
+#[rustversion::since(1.82)]
+impl<F: Family, T> private::Sealed<F> for &[Cell<F, T>] {}
 
-#[rustversion::nightly]
+#[rustversion::since(1.82)]
 impl<'a, F: Family, T> GetWithOwner<'a, F> for &'a [Cell<F, T>] {
     type Get = alloc::boxed::Box<[&'a T]>;
 
+    #[rustversion::attr(since(1.81), expect(clippy::incompatible_msrv))]
     fn get(self, owner: &'a CellOwner<F>) -> Self::Get {
         let _ = owner;
         let mut result = alloc::boxed::Box::new_uninit_slice(self.len());
@@ -207,10 +217,11 @@ impl<'a, F: Family, T> GetWithOwner<'a, F> for &'a [Cell<F, T>] {
     }
 }
 
-#[rustversion::nightly]
+#[rustversion::since(1.82)]
 impl<'a, F: Family, T> GetMutWithOwner<'a, F> for &'a [Cell<F, T>] {
     type GetMut = alloc::boxed::Box<[&'a mut T]>;
 
+    #[rustversion::attr(since(1.81), expect(clippy::incompatible_msrv))]
     fn try_get_mut(self, owner: &'a mut CellOwner<F>) -> Option<Self::GetMut> {
         // Edge case: each item in a slice of ZSTs point to the same memory
         // address, and referencing this address more than once would lead to

@@ -2,7 +2,7 @@
 name         = "cell-family"
 description  = "Cheap cells accessed through unique owners"
 authors      = ["Grégoire Geis <opensource@gregoirege.is>"]
-version      = "0.1.1"
+version      = "0.1.2"
 license      = "ISC"
 edition      = "2021"
 rust-version = "1.61"  # MSRV

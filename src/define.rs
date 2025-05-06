@@ -46,6 +46,7 @@ macro_rules! impl_family {
         static IS_BORROWED: core::sync::atomic::AtomicBool =
             core::sync::atomic::AtomicBool::new(false);
 
+        // SAFETY: cells are locked via a static `IS_BORROWED`.`
         unsafe impl $crate::Family for $family_name {
             const NAME: &'static str = core::stringify!($family_name);
 
@@ -77,7 +78,9 @@ macro_rules! impl_family {
             }
         }
 
+        // SAFETY: `IS_BORROWED` is (un)locked in a thread-safe manner.
         unsafe impl $crate::ThreadSafeFamily for $family_name {}
+        // SAFETY: `IS_BORROWED` is a static which can be accessed from any thread.
         unsafe impl $crate::SendThreadSafeFamily for $family_name {}
     };
 
@@ -85,6 +88,7 @@ macro_rules! impl_family {
         #[cfg($unsafe_debug_cfg)]
         static MUTEX: $crate::ManualMutex = $crate::ManualMutex::new();
 
+        // SAFETY: cells are locked via a static `MUTEX`.
         unsafe impl $crate::Family for $family_name {
             const NAME: &'static str = core::stringify!($family_name);
 
@@ -109,8 +113,10 @@ macro_rules! impl_family {
             }
         }
 
+        // SAFETY: `MUTEX` is thread-safe by definition.
         unsafe impl $crate::ThreadSafeFamily for $family_name {}
 
+        // SAFETY: `borrow_owner_or_wait()` locks the underlying `MUTEX`.
         unsafe impl $crate::WaitFamily for $family_name {
             fn borrow_owner_or_wait() {
                 #[cfg($unsafe_debug_cfg)]
@@ -128,6 +134,7 @@ macro_rules! impl_family {
         static mut MUTEX_GUARD: core::option::Option<tokio::sync::MutexGuard<'static, ()>> =
             core::option::Option::None;
 
+        // SAFETY: cells are locked via a static `MUTEX`.
         unsafe impl $crate::Family for $family_name {
             const NAME: &'static str = core::stringify!($family_name);
 
@@ -160,9 +167,14 @@ macro_rules! impl_family {
             }
         }
 
+        // SAFETY: `MUTEX` is thread-safe by definition.
         unsafe impl $crate::ThreadSafeFamily for $family_name {}
+
+        // SAFETY: the `MUTEX_GUARD` which provides access to locked data is stored locally, so
+        //   access can be sent across threads.
         unsafe impl $crate::SendThreadSafeFamily for $family_name {}
 
+        // SAFETY: `borrow_owner_or_wait_async()` locks the underlying `MUTEX`.
         #[cfg($unsafe_debug_cfg)]
         unsafe impl $crate::AsyncWaitFamily for $family_name {
             type Future = core::pin::Pin<std::boxed::Box<
@@ -181,6 +193,8 @@ macro_rules! impl_family {
                 })
             }
         }
+
+        // SAFETY: unsafe, but caller used `unsafe` keyword.
         #[cfg(not($unsafe_debug_cfg))]
         unsafe impl $crate::AsyncWaitFamily for $family_name {
             type Future = core::future::Ready<()>;
@@ -213,6 +227,7 @@ macro_rules! impl_family {
             }
         }
 
+        // SAFETY: cells are locked via a static thread-local `IS_BORROWED`.
         unsafe impl $crate::Family for $family_name {
             const NAME: &'static str = core::stringify!($family_name);
 

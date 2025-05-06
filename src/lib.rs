@@ -116,10 +116,7 @@
 //! [tlcell]: https://docs.rs/qcell/0.5.2/qcell/struct.TLCell.html
 
 #![cfg_attr(not(feature = "std"), no_std)]
-#![cfg_attr(
-    feature = "nightly",
-    feature(maybe_uninit_array_assume_init, maybe_uninit_uninit_array, new_uninit)
-)]
+#![cfg_attr(feature = "nightly", feature(maybe_uninit_array_assume_init))]
 #![cfg_attr(all(test, feature = "nightly"), feature(thread_local))]
 #![deny(
     clippy::missing_safety_doc,
@@ -127,7 +124,7 @@
     clippy::undocumented_unsafe_blocks
 )]
 
-#[rustversion::nightly]
+#[rustversion::since(1.82)]
 extern crate alloc;
 
 use core::{cell::UnsafeCell, marker::PhantomData};
@@ -636,11 +633,11 @@ pub trait GetMutWithOwner<'a, F: Family>: GetWithOwner<'a, F> {
 
 /// See [`qcell::Invariant`](
 /// https://github.com/uazu/qcell/blob/0b69b7953d420612de58dd433e94681690bbd20c/src/lib.rs#L387-L406).
-struct Invariant<T>(fn(T) -> T);
+struct Invariant<T>(#[allow(dead_code)] fn(T) -> T);
 
 /// A type that's neither [`Send`] nor [`Sync`], which will propagate to any
 /// `struct` that contains it (including in a [`PhantomData`]).
-struct NotSendOrSync(*const ());
+struct NotSendOrSync(#[allow(dead_code)] *const ());
 
 #[cfg(test)]
 const _: () = {
@@ -667,6 +664,7 @@ unsafe impl Sync for ManualMutex {}
 #[cfg(feature = "std")]
 impl ManualMutex {
     /// Returns a new unlocked [`ManualMutex`].
+    #[allow(clippy::new_without_default)]
     pub const fn new() -> Self {
         Self {
             mutex: std::sync::Mutex::new(()),
